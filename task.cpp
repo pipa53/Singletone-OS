@@ -1,72 +1,134 @@
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <mutex>
+#include <string>
 
-// Базовый класс для синхронизации
-class SyncStrategy {
-public:
-    virtual void lock() = 0;
-    virtual void unlock() = 0;
-    virtual ~SyncStrategy() = default;
-};
+template <typename T>
+struct CreateUsingNew
+{
+	static T *Create()
+	{
+		return new T
+	}
+	static void Destroy(T *p)
+	{
+		delete p
+	}
+}
 
-// Стратегия синхронизации с использованием std::mutex
-class MutexSync : public SyncStrategy {
+template <typename T>
+struct CreateUsingShared
+{
+	static std::shared_ptr<T> Create()
+	{
+		return std::make_shared<T>()
+	}
+}
+
+// Threading policies
+
+struct NoLock
+{
+	void lock() {}
+	void unlock() {}
+}
+
+struct MutexLock
+{
+	void lock()
+	{
+		m.lock()
+	}
+	void unlock()
+	{
+		m.unlock()
+	}
 private:
-    std::mutex mtx;
-public:
-    void lock() override {
-        mtx.lock();
-    }
-    
-    void unlock() override {
-        mtx.unlock();
-    }
-};
+	std::mutex m
+}
 
-// Класс Singleton
-template <typename T, typename Sync = MutexSync>
-class Singleton {
+// Singleton template
+
+template <
+	typename T,
+	template <typename> class CreationPolicy,
+	typename LockPolicy>
+class Singleton
+{
+public:
+	static T &Instance()
+	{
+		l.lock()
+		if (!instance)
+			instance = CreationPolicy<T>::Create()
+		l.unlock()
+		return *instance
+	}
+
+	static void Destroy()
+	{
+		l.lock()
+		if (instance)
+		{
+			CreationPolicy<T>::Destroy(instance)
+			instance = nullptr
+		}
+		l.unlock()
+	}
 private:
-    static std::unique_ptr<T> instance;
-    static Sync sync;
+	static inline T *instance = nullptr
+	static inline LockPolicy l
+	Singleton() = delete
+	Singleton(const Singleton &) = delete
+	Singleton &operator=(const Singleton &) = delete
+}
 
-    Singleton() = default;
+// Пример класса для Singleton
 
+class Logger
+{
 public:
-    // Удаляем конструктор копирования и оператор присваивания
-    Singleton(const Singleton&) = delete;
-    Singleton& operator=(const Singleton&) = delete;
+	void SetOutputFile(const std::string &filename)
+	{
+		l.lock()
+		if (ofs.is_open())
+			ofs.close()
+		ofs.open(filename, std::ios::app)
+		l.unlock()
+	}
 
-    static T& getInstance() {
-        sync.lock();
-        if (!instance) {
-            instance.reset(new T());
-        }
-        sync.unlock();
-        return *instance;
-    }
-};
+	void Log(const std::string &msg)
+	{
+		l.lock()
+		if (ofs.is_open())
+			ofs << msg << '\n'
+		else
+			std::cout << msg << '\n'
+		l.unlock()
+	}
 
-// Инициализация статических членов
-template <typename T, typename Sync>
-std::unique_ptr<T> Singleton<T, Sync>::instance = nullptr;
+	~Logger()
+	{
+		l.lock()
+		if (ofs.is_open())
+			ofs.close()
+		l.unlock()
+	}
+private:
+	Logger() = default
+	std::ofstream ofs
+	std::mutex l
+	friend struct CreateUsingNew<Logger>
+}
 
-template <typename T, typename Sync>
-Sync Singleton<T, Sync>::sync;
+using AppLogger = Singleton<Logger, CreateUsingNew, MutexLock>
 
-// Пример класса, который будет использоваться как Singleton
-class MyClass {
-public:
-    void doSomething() {
-        std::cout << "Doing something!" << std::endl;
-    }
-};
-
-int main() {
-    // Получение экземпляра Singleton и использование его
-    MyClass& myInstance = Singleton<MyClass>::getInstance();
-    myInstance.doSomething();
-
-    return 0;
+int main()
+{
+	auto &log = AppLogger::Instance()
+	log.SetOutputFile("log.txt")
+	log.Log("Starting application")
+	log.Log("Logging to file")
+	AppLogger::Destroy()
 }

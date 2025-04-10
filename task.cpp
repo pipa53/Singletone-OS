@@ -26,8 +26,6 @@ struct CreateUsingShared
 	}
 }
 
-// Threading policies
-
 struct NoLock
 {
 	void lock() {}
@@ -47,8 +45,6 @@ struct MutexLock
 private:
 	std::mutex m
 }
-
-// Singleton template
 
 template <
 	typename T,
@@ -84,7 +80,6 @@ private:
 	Singleton &operator=(const Singleton &) = delete
 }
 
-// Пример класса для Singleton
 
 class Logger
 {
